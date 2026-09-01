@@ -69,6 +69,12 @@
     border-radius:999px;font-size:12px;cursor:pointer;transition:all .15s;}
   .pill-btn:hover{border-color:var(--accent);color:var(--text);}
   .pill-btn.active{background:var(--accent);color:#0f172a;border-color:var(--accent);font-weight:700;}
+  #scope-bar{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--border);
+    border-radius:999px;padding:9px 18px;margin-bottom:20px;flex-wrap:wrap;font-size:13px;}
+  .team-chip{border:1px solid #2dd4bf;color:#2dd4bf;background:#2dd4bf1f;padding:5px 14px;border-radius:999px;
+    font-weight:700;font-size:12px;}
+  .role-pill{background:#f0501b26;color:#ff8a4c;padding:5px 12px;border-radius:999px;font-size:11px;font-weight:700;}
+  .scope-note{color:var(--muted);font-size:12px;}
   tbody tr{transition:background .1s;}
   tbody tr:hover{background:var(--panel2);}
   .card{transition:all .15s;cursor:default;}
@@ -114,6 +120,7 @@
       <div class="topbar">
         <h2 id="view-title">Tổng quan <span class="badge" id="team-badge"></span></h2>
       </div>
+      <div id="scope-bar"></div>
       <div id="view-content"></div>
     </main>
   </div>
@@ -134,6 +141,8 @@
   let currentAuth = null;   // { email, team, role, name }
   let currentRows = [];
   let currentHeaders = [];
+  let scopeTeam = '';       // '' = xem tất cả (chỉ Admin); Leader luôn cố định = team của họ
+  let currentView = 'overview';
 
   function api(action, email) {
     return new Promise((resolve, reject) => {
@@ -188,6 +197,8 @@
       document.getElementById('side-email').innerText = currentAuth.email;
       document.getElementById('team-badge').innerText = currentAuth.role === 'Admin' ? 'Admin - Tất cả team' : 'Team ' + currentAuth.team;
       if (currentAuth.role === 'Admin') document.getElementById('admin-nav').style.display = 'block';
+      scopeTeam = currentAuth.role === 'Admin' ? '' : currentAuth.team;
+      renderScopeBar();
       renderView('overview');
     });
   }
@@ -214,30 +225,63 @@
     accesslist: 'Quản lý quyền truy cập', auditlog: 'Nhật ký truy cập'
   };
 
+  function renderScopeBar() {
+    const el = document.getElementById('scope-bar');
+    const isAdmin = currentAuth.role === 'Admin';
+    const allTeams = [...new Set(currentRows.map(r => r['Team']).filter(Boolean))].sort();
+
+    const teamPartHtml = isAdmin
+      ? '<div class="pill-group" id="scope-pills">' +
+          '<button class="pill-btn ' + (scopeTeam === '' ? 'active' : '') + '" data-team="">Tất cả (' + allTeams.length + ' team)</button>' +
+          allTeams.map(t => '<button class="pill-btn ' + (scopeTeam === t ? 'active' : '') + '" data-team="' + t + '">' + t + '</button>').join('') +
+        '</div>'
+      : '<span class="team-chip">' + currentAuth.team + '</span>';
+
+    const roleHtml = '<span class="role-pill">👑 ' + (isAdmin ? 'Admin' : 'Lead/SubLead') + '</span>';
+    const noteHtml = isAdmin
+      ? '<span class="scope-note">Toàn quyền xem &amp; lọc theo từng team.</span>'
+      : '<span class="scope-note">🔒 Bạn chỉ quản lý được team được phân công.</span>';
+
+    el.innerHTML = '<span class="scope-label">🌐 Phạm vi xem &amp; xử lý:</span>' + teamPartHtml + roleHtml + noteHtml;
+
+    if (isAdmin) {
+      document.querySelectorAll('#scope-pills .pill-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          scopeTeam = btn.dataset.team;
+          renderScopeBar();
+          renderView(currentView);
+        });
+      });
+    }
+  }
+
   function renderView(view) {
+    currentView = view;
     document.getElementById('view-title').innerHTML = TITLES[view] + ' <span class="badge" id="team-badge2">' +
       (currentAuth.role === 'Admin' ? 'Admin' : 'Team ' + currentAuth.team) + '</span>';
     const el = document.getElementById('view-content');
     el.innerHTML = '';
 
-    if (view === 'overview') return renderOverview(el);
+    const scopedRows = scopeTeam ? currentRows.filter(r => r['Team'] === scopeTeam) : currentRows;
+
+    if (view === 'overview') return renderOverview(el, scopedRows);
     if (view === 'accesslist') return renderAccessList(el);
     if (view === 'auditlog') return renderAuditLog(el);
 
-    // ado / eligible / fd / all -> bảng dữ liệu có filter theo loại
+    // ado / eligible / fd / all -> bảng dữ liệu có filter theo loại, đã áp dụng scopeTeam ở trên
     const typeMap = { ado: 'ADO', eligible: 'Eligible', fd: 'bù' };
     const filterWord = typeMap[view];
-    const rows = filterWord ? currentRows.filter(r => (r['Cashback Type'] || '').includes(filterWord)) : currentRows;
+    const rows = filterWord ? scopedRows.filter(r => (r['Cashback Type'] || '').includes(filterWord)) : scopedRows;
     renderTablePanel(el, rows, currentHeaders);
   }
 
   function money(n){ return (Number(n)||0).toLocaleString('vi-VN'); }
 
-  function renderOverview(el) {
-    const total = currentRows.length;
-    const sum = currentRows.reduce((s, r) => s + (Number(r['Số tiền chi trả (Kết quả BI)']) || 0), 0);
+  function renderOverview(el, rows) {
+    const total = rows.length;
+    const sum = rows.reduce((s, r) => s + (Number(r['Số tiền chi trả (Kết quả BI)']) || 0), 0);
     const byType = {};
-    currentRows.forEach(r => {
+    rows.forEach(r => {
       const t = r['Cashback Type'] || 'Khác';
       byType[t] = (byType[t] || 0) + (Number(r['Số tiền chi trả (Kết quả BI)']) || 0);
     });
@@ -263,18 +307,8 @@
   }
 
   function renderTablePanel(el, rows, headers) {
-    const teams = [...new Set(rows.map(r => r['Team']).filter(Boolean))].sort();
-    let selectedTeam = '';
     el.innerHTML = `
       <div class="panel">
-        ${teams.length > 1 ? `
-        <div class="scope-row">
-          <span class="scope-label">Phạm vi xem:</span>
-          <div class="pill-group" id="team-pills">
-            <button class="pill-btn active" data-team="">Tất cả (${teams.length} team)</button>
-            ${teams.map(t => '<button class="pill-btn" data-team="' + t + '">' + t + '</button>').join('')}
-          </div>
-        </div>` : ''}
         <div class="filters">
           <input type="text" id="search-box" placeholder="Tìm kiếm...">
         </div>
@@ -286,27 +320,13 @@
       </div>`;
     function draw() {
       const q = document.getElementById('search-box').value.toLowerCase();
-      const filtered = rows.filter(r => {
-        const matchesTeam = !selectedTeam || r['Team'] === selectedTeam;
-        const matchesSearch = !q || JSON.stringify(r).toLowerCase().includes(q);
-        return matchesTeam && matchesSearch;
-      });
+      const filtered = rows.filter(r => !q || JSON.stringify(r).toLowerCase().includes(q));
       document.getElementById('tbody').innerHTML = filtered.map(r =>
         '<tr>' + headers.map(h => '<td>' + (r[h] !== undefined ? r[h] : '') + '</td>').join('') + '</tr>'
       ).join('');
       document.getElementById('empty-msg').style.display = filtered.length ? 'none' : 'block';
     }
     document.getElementById('search-box').addEventListener('input', draw);
-    if (teams.length > 1) {
-      document.querySelectorAll('#team-pills .pill-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          document.querySelectorAll('#team-pills .pill-btn').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          selectedTeam = btn.dataset.team;
-          draw();
-        });
-      });
-    }
     draw();
   }
 
