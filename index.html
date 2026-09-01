@@ -69,12 +69,23 @@
     border-radius:999px;font-size:12px;cursor:pointer;transition:all .15s;}
   .pill-btn:hover{border-color:var(--accent);color:var(--text);}
   .pill-btn.active{background:var(--accent);color:#0f172a;border-color:var(--accent);font-weight:700;}
-  #scope-bar{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--border);
-    border-radius:999px;padding:9px 18px;margin-bottom:20px;flex-wrap:wrap;font-size:13px;}
-  .team-chip{border:1px solid #2dd4bf;color:#2dd4bf;background:#2dd4bf1f;padding:5px 14px;border-radius:999px;
-    font-weight:700;font-size:12px;}
-  .role-pill{background:#f0501b26;color:#ff8a4c;padding:5px 12px;border-radius:999px;font-size:11px;font-weight:700;}
-  .scope-note{color:var(--muted);font-size:12px;}
+  #scope-bar{display:flex;align-items:center;gap:14px;background:linear-gradient(180deg,var(--panel),var(--panel2));
+    border:1px solid var(--border);border-radius:12px;padding:11px 18px;margin-bottom:20px;flex-wrap:wrap;font-size:13px;}
+  .scope-icon{font-size:15px;}
+  .team-select{background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:7px 12px;
+    border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;min-width:170px;}
+  .team-select:hover{border-color:var(--accent);}
+  .team-chip{border:1px solid #2dd4bf;color:#2dd4bf;background:#2dd4bf1f;padding:6px 16px;border-radius:8px;
+    font-weight:700;font-size:13px;}
+  .role-pill{background:#f0501b26;color:#ff8a4c;padding:5px 12px;border-radius:8px;font-size:11px;font-weight:700;
+    white-space:nowrap;}
+  .scope-note{color:var(--muted);font-size:12px;margin-left:auto;}
+  .user-chip{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--border);
+    border-radius:10px;padding:6px 14px 6px 6px;}
+  .user-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#F0501B,#ff8a4c);
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#0f172a;flex-shrink:0;}
+  .user-chip .u-name{font-size:13px;font-weight:700;line-height:1.2;}
+  .user-chip .u-role{font-size:10px;color:var(--accent);font-weight:700;letter-spacing:.03em;}
   tbody tr{transition:background .1s;}
   tbody tr:hover{background:var(--panel2);}
   .card{transition:all .15s;cursor:default;}
@@ -119,6 +130,13 @@
     <main>
       <div class="topbar">
         <h2 id="view-title">Tổng quan <span class="badge" id="team-badge"></span></h2>
+        <div class="user-chip">
+          <div class="user-avatar" id="user-avatar"></div>
+          <div>
+            <div class="u-name" id="user-chip-name"></div>
+            <div class="u-role" id="user-chip-role"></div>
+          </div>
+        </div>
       </div>
       <div id="scope-bar"></div>
       <div id="view-content"></div>
@@ -196,6 +214,9 @@
       document.getElementById('side-name').innerText = currentAuth.name;
       document.getElementById('side-email').innerText = currentAuth.email;
       document.getElementById('team-badge').innerText = currentAuth.role === 'Admin' ? 'Admin - Tất cả team' : 'Team ' + currentAuth.team;
+      document.getElementById('user-avatar').innerText = (currentAuth.name || currentAuth.email).trim().charAt(0).toUpperCase();
+      document.getElementById('user-chip-name').innerText = currentAuth.name;
+      document.getElementById('user-chip-role').innerText = currentAuth.role === 'Admin' ? '👑 ADMIN' : '👑 LEAD/SUBLEAD (' + currentAuth.team + ')';
       if (currentAuth.role === 'Admin') document.getElementById('admin-nav').style.display = 'block';
       scopeTeam = currentAuth.role === 'Admin' ? '' : currentAuth.team;
       renderScopeBar();
@@ -231,10 +252,10 @@
     const allTeams = [...new Set(currentRows.map(r => r['Team']).filter(Boolean))].sort();
 
     const teamPartHtml = isAdmin
-      ? '<div class="pill-group" id="scope-pills">' +
-          '<button class="pill-btn ' + (scopeTeam === '' ? 'active' : '') + '" data-team="">Tất cả (' + allTeams.length + ' team)</button>' +
-          allTeams.map(t => '<button class="pill-btn ' + (scopeTeam === t ? 'active' : '') + '" data-team="' + t + '">' + t + '</button>').join('') +
-        '</div>'
+      ? '<select class="team-select" id="team-select">' +
+          '<option value="">🌍 Tất cả (' + allTeams.length + ' team)</option>' +
+          allTeams.map(t => '<option value="' + t + '" ' + (scopeTeam === t ? 'selected' : '') + '>' + t + '</option>').join('') +
+        '</select>'
       : '<span class="team-chip">' + currentAuth.team + '</span>';
 
     const roleHtml = '<span class="role-pill">👑 ' + (isAdmin ? 'Admin' : 'Lead/SubLead') + '</span>';
@@ -242,15 +263,13 @@
       ? '<span class="scope-note">Toàn quyền xem &amp; lọc theo từng team.</span>'
       : '<span class="scope-note">🔒 Bạn chỉ quản lý được team được phân công.</span>';
 
-    el.innerHTML = '<span class="scope-label">🌐 Phạm vi xem &amp; xử lý:</span>' + teamPartHtml + roleHtml + noteHtml;
+    el.innerHTML = '<span class="scope-icon">🌐</span><span class="scope-label">Phạm vi xem &amp; xử lý:</span>' +
+      teamPartHtml + roleHtml + noteHtml;
 
     if (isAdmin) {
-      document.querySelectorAll('#scope-pills .pill-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          scopeTeam = btn.dataset.team;
-          renderScopeBar();
-          renderView(currentView);
-        });
+      document.getElementById('team-select').addEventListener('change', (e) => {
+        scopeTeam = e.target.value;
+        renderView(currentView);
       });
     }
   }
